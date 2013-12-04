@@ -4,9 +4,9 @@ require 'active_support/core_ext/kernel/singleton_class'
 class ERB
   module Util
     HTML_ESCAPE = { '&' => '&amp;',  '>' => '&gt;',   '<' => '&lt;', '"' => '&quot;', "'" => '&#39;' }
-    JSON_ESCAPE = { '&' => '\u0026', '>' => '\u003E', '<' => '\u003C' }
+    JSON_ESCAPE = { '&' => '\u0026', '>' => '\u003e', '<' => '\u003c', "\u2028" => '\u2028', "\u2029" => '\u2029' }
     HTML_ESCAPE_ONCE_REGEXP = /["><']|&(?!([a-zA-Z]+|(#\d+));)/
-    JSON_ESCAPE_REGEXP = /[&"><]/
+    JSON_ESCAPE_REGEXP = /[\u2028\u2029&><]/u
 
     # A utility method for escaping HTML tag characters.
     # This method is also aliased as <tt>h</tt>.
@@ -59,6 +59,40 @@ class ERB
     #
     #   json_escape('{"name":"john","created_at":"2010-04-28T01:39:31Z","id":1}')
     #   # => {name:john,created_at:2010-04-28T01:39:31Z,id:1}
+    # 
+    # The intended use case for this method is to escape JSON strings before including
+    # them inside a script tag to avoid XSS vulnerability:
+    # 
+    #   <script type="application/javascript">
+    #     var currentUser = <%= json_escape current_user.to_json %>;
+    #   </script>
+    # 
+    # WARNING: this helper only works with valid JSON. Using this on non-JSON values
+    # will open up serious XSS vulnerabilities. For example, if you replace the
+    # +current_user.to_json+ in the example above with user input instead, the browser
+    # will happily eval() that string as JavaScript.
+    # 
+    # The escaping performed in this method is identical to those performed in the
+    # ActiveSupport JSON encoder when +ActiveSupport.escape_html_entities_in_json+ is
+    # set to true. Because this transformation is idempotent, this helper can be
+    # applied even if +ActiveSupport.escape_html_entities_in_json+ is already true.
+    # 
+    # Therefore, when you are unsure if +ActiveSupport.escape_html_entities_in_json+
+    # is enabled, or if you are unsure where your JSON string originated from, it
+    # is recommended that you always apply this helper (other libraries, such as the
+    # JSON gem, does not provide this kind of protection by default; also some gems
+    # might override +#to_json+ to bypass ActiveSupport's encoder).
+    # 
+    # The output of this helper method is marked as HTML safe so that you can directly
+    # include it inside a +<script>+ tag as shown above.
+    # 
+    # However, it is NOT safe to use the output of this inside an HTML attribute,
+    # because quotation marks are not escaped. Doing so might break your page's layout.
+    # If you intend to use this inside an HTML attribute, you should use the 
+    # +html_escape+ helper (or its +h+ alias) instead:
+    # 
+    #   <div data-user-info="<%= h current_user.to_json %>">...</div>
+    # 
     def json_escape(s)
       result = s.to_s.gsub(JSON_ESCAPE_REGEXP, JSON_ESCAPE)
       s.html_safe? ? result.html_safe : result

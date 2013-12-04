@@ -15,6 +15,51 @@ class ErbUtilTest < ActiveSupport::TestCase
     end
   end
 
+  HTML_ESCAPE_TEST_CASES = [
+    ['<br>', '&lt;br&gt;'],
+    ['a & b', 'a &amp; b'],
+    ['"quoted" string', '&quot;quoted&quot; string'],
+    ["'quoted' string", '&#39;quoted&#39; string'],
+    [
+      '<script type="application/javascript">alert("You are \'pwned\'!")</script>',
+      '&lt;script type=&quot;application/javascript&quot;&gt;alert(&quot;You are &#39;pwned&#39;!&quot;)&lt;/script&gt;'
+    ]
+  ]
+
+  JSON_ESCAPE_TEST_CASES = [
+    ['1', '1'],
+    ['null', 'null'],
+    ['"&"', '"\u0026"'],
+    ['"</script>"', '"\u003c/script\u003e"'],
+    ['["</script>"]', '["\u003c/script\u003e"]'],
+    ['{"name":"</script>"}', '{"name":"\u003c/script\u003e"}'],
+    [%({"name":"d\u2028h\u2029h"}), '{"name":"d\u2028h\u2029h"}']
+  ]
+
+  def test_html_escape
+    HTML_ESCAPE_TEST_CASES.each do |(raw, expected)|
+      assert_equal expected, html_escape(raw)
+    end
+  end
+
+  def test_json_escape
+    JSON_ESCAPE_TEST_CASES.each do |(raw, expected)|
+      assert_equal expected, json_escape(raw)
+    end
+  end
+
+  def test_json_escape_does_not_alter_json_string_meaning
+    JSON_ESCAPE_TEST_CASES.each do |(raw, _)|
+      assert_equal ActiveSupport::JSON.decode(raw), ActiveSupport::JSON.decode(json_escape(raw))
+    end
+  end
+
+  def test_json_escape_is_idempotent
+    JSON_ESCAPE_TEST_CASES.each do |(raw, _)|
+      assert_equal json_escape(raw), json_escape(json_escape(raw))
+    end
+  end
+
   def test_json_escape_returns_unsafe_strings_when_passed_unsafe_strings
     value = json_escape("asdf")
     assert !value.html_safe?
